@@ -113,16 +113,21 @@ class PasParser(BaseParser):
         self.expect(TT.PROGRAM)
         name = self.parse_qualified_name()
         self.expect(TT.SEMI)
+        self.skip_compiler_dirs()
         uses = self._parse_uses_clause() if self.check(TT.USES) else None
+        # Programs may have top-level var/const/type/label sections before begin
+        decls = self._parse_decl_list(allow_impl=True)
         block = self._parse_block()
         self.match(TT.DOT)
-        return self._node("Program", start, name=name, uses=uses, block=block)
+        return self._node("Program", start, name=name, uses=uses,
+                          declarations=decls, block=block)
 
     def _parse_library(self) -> dict:
         start = self.current
         self.expect(TT.LIBRARY)
         name = self.parse_qualified_name()
         self.expect(TT.SEMI)
+        self.skip_compiler_dirs()
         uses = self._parse_uses_clause() if self.check(TT.USES) else None
         decls = self._parse_decl_list(allow_impl=True)
         block = self._parse_block()
@@ -214,8 +219,12 @@ class PasParser(BaseParser):
         start = self.current
         self.expect(TT.USES)
         items: List[dict] = []
+        self.skip_compiler_dirs()
         items.append(self._parse_uses_item())
         while self.match(TT.COMMA):
+            self.skip_compiler_dirs()
+            if self.check(TT.SEMI):  # trailing comma before semicolon
+                break
             items.append(self._parse_uses_item())
         self.expect(TT.SEMI)
         return self._node("UsesClause", start, items=items)
@@ -238,6 +247,7 @@ class PasParser(BaseParser):
         decls: List[dict] = []
         while True:
             self.skip_compiler_dirs()
+            self.skip_attributes()
             t = self.current.type
 
             if t == TT.TYPE:
@@ -267,6 +277,8 @@ class PasParser(BaseParser):
         start = self.current
         self.expect(TT.TYPE)
         items: List[dict] = []
+        self.skip_compiler_dirs()
+        self.skip_attributes()
         while self.is_ident() or self.check(TT.IDENT):
             try:
                 items.append(self._parse_type_decl())
@@ -274,6 +286,7 @@ class PasParser(BaseParser):
                 items.append(self._error_node(exc))
                 self._recover_to(TT.SEMI, TT.END)
             self.skip_compiler_dirs()
+            self.skip_attributes()
         return self._node("TypeSection", start, items=items)
 
     def _parse_type_decl(self) -> dict:
@@ -387,6 +400,7 @@ class PasParser(BaseParser):
 
         while not self.check(TT.END, TT.EOF):
             self.skip_compiler_dirs()
+            self.skip_attributes()
             if self.check(TT.END, TT.EOF):
                 break
 
@@ -1695,8 +1709,17 @@ class PasParser(BaseParser):
             if self.check(TT.DOT):
                 self.advance()
                 member = self.expect_ident().value
+                # Speculatively try generic method call: .Method<T>
+                type_args = None
+                if self.check(TT.LT):
+                    saved = self.pos
+                    try:
+                        type_args = self._parse_generic_args_expr()
+                    except Exception:
+                        self.pos = saved
                 node = self._node("MemberAccess", node,
-                                  obj=node, member=member)
+                                  obj=node, member=member,
+                                  **({"typeArgs": type_args} if type_args else {}))
             elif self.check(TT.LBRACKET):
                 self.advance()
                 indices: List[dict] = [self._parse_expr()]
@@ -1761,6 +1784,16 @@ class PasParser(BaseParser):
             name = self.advance().value
             if name.lower() in ("true", "false"):
                 return self._node("BoolLiteral", start, value=name.lower() == "true")
+            # Speculatively try to parse generic type args: Ident<T, U>
+            # Save position so we can backtrack if '<' is really a comparison.
+            if self.check(TT.LT):
+                saved = self.pos
+                try:
+                    type_args = self._parse_generic_args_expr()
+                    return self._node("Identifier", start, name=name,
+                                      typeArgs=type_args)
+                except Exception:
+                    self.pos = saved
             return self._node("Identifier", start, name=name)
 
         # String keyword used as type cast / type reference
@@ -1771,6 +1804,18 @@ class PasParser(BaseParser):
         raise self._error(
             f"Unexpected token in expression: {self.current.type.name} ({self.current.value!r})"
         )
+
+    def _parse_generic_args_expr(self) -> List[dict]:
+        """Parse '<' TypeRef {',' TypeRef} '>' in an expression context.
+
+        Raises on any unexpected token so the caller can backtrack.
+        """
+        self.expect(TT.LT)
+        args: List[dict] = [self._parse_type_ref()]
+        while self.match(TT.COMMA):
+            args.append(self._parse_type_ref())
+        self.expect(TT.GT)
+        return args
 
     def _parse_set_constructor(self) -> dict:
         start = self.current

@@ -135,3 +135,17 @@ class BaseParser:
         while self.check(TT.COMPILER_DIR):
             dirs.append(self.advance().value)
         return dirs
+
+    def skip_attributes(self) -> None:
+        """Skip zero or more custom attribute blocks: [AttrName] or [AttrName(args)]."""
+        while self.check(TT.LBRACKET):
+            self.advance()  # consume '['
+            depth = 1
+            while depth > 0 and not self.check(TT.EOF):
+                if self.check(TT.LBRACKET):
+                    depth += 1
+                elif self.check(TT.RBRACKET):
+                    depth -= 1
+                self.advance()
+            # allow chained compiler dirs between attributes
+            self.skip_compiler_dirs()

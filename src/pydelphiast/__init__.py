@@ -50,6 +50,8 @@ __all__ = [
     "DelphiError",
     "LexerError",
     "ParseError",
+    # Slim view
+    "slim_ast",
 ]
 
 
@@ -138,3 +140,72 @@ def parse_project(
 def to_json(ast: dict, indent: int = 2, ensure_ascii: bool = False) -> str:
     """Serialise an AST dict to a JSON string."""
     return json.dumps(ast, indent=indent, ensure_ascii=ensure_ascii, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Slim / structural-only view
+# ---------------------------------------------------------------------------
+
+# Node kinds that represent structural declarations worth keeping
+_STRUCTURAL_KINDS = {
+    "Unit", "Program", "Library", "Package",
+    "InterfaceSection", "ImplementationSection",
+    "UsesClause", "UsesItem",
+    "TypeSection", "TypeDecl",
+    "ClassType", "RecordType", "InterfaceType", "DispinterfaceType", "ObjectType",
+    "EnumType", "SubrangeType", "SetType", "ArrayType", "PointerType",
+    "ProcType", "FileType", "PackedType",
+    "MethodDecl", "FieldDecl", "PropertyDecl", "VisibilitySection",
+    "RoutineDecl",
+    "ConstSection", "ConstDecl", "TypedConstDecl",
+    "VarSection", "VarDecl",
+    "ExportsSection", "ExportsItem",
+    "DfmObject", "DfmProperty",
+    "GroupProject", "ProjectRef", "DprojProject",
+    "ParseError",
+}
+
+# Keys that carry bulk statement/body trees — always stripped in slim mode.
+# Expression sub-keys (left/right/args/…) are NOT listed here because they
+# only appear inside bodies which are already stripped, and stripping them
+# globally would also erase useful info like defaultValue literals.
+_STRIP_KEYS = {"body", "statements", "condition", "elseStmt",
+               "thenStmt", "initStmt", "finalStmt",
+               "initSection", "finalSection"}
+
+
+def slim_ast(node: object) -> object:
+    """Return a structural-only view of an AST node.
+
+    Removes ``startPos``/``endPos`` from every node and strips routine bodies
+    and expression trees, keeping only declarations: units, uses clauses,
+    classes, records, interfaces, methods, fields, properties, consts, vars.
+    """
+    if isinstance(node, list):
+        result = [slim_ast(item) for item in node]
+        return [item for item in result if item not in (None, [], {})]
+
+    if not isinstance(node, dict):
+        return node
+
+    kind = node.get("kind", "")
+
+    out: dict = {}
+    for key, val in node.items():
+        if key in ("startPos", "endPos"):
+            continue
+        if key in _STRIP_KEYS:
+            continue
+        if key == "items" and kind in ("UsesClause",):
+            # Keep only name + path from UsesItem
+            out[key] = [
+                {k: v for k, v in slim_ast(i).items() if k in ("kind", "name", "path")}
+                for i in (val or [])
+                if isinstance(i, dict)
+            ]
+            continue
+        out[key] = slim_ast(val)
+
+    # Drop empty containers produced by stripping
+    out = {k: v for k, v in out.items() if v not in (None, [], {})}
+    return out

@@ -72,6 +72,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Abort on the first parse error instead of inserting error nodes",
     )
     p.add_argument(
+        "--slim",
+        action="store_true",
+        help="Output structural-only AST: removes positions and routine bodies, "
+             "keeps only uses, classes, methods, fields, properties, consts, vars",
+    )
+    p.add_argument(
         "--version",
         action="version",
         version=f"pydelphiast {pda.__version__}",
@@ -121,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
             })
 
     output = results[0] if len(results) == 1 else results
+    if args.slim:
+        output = pda.slim_ast(output)
     text = json.dumps(output, indent=indent, ensure_ascii=False, default=str)
 
     if args.output:
