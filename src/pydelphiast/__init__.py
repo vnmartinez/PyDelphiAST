@@ -52,6 +52,8 @@ __all__ = [
     "ParseError",
     # Slim view
     "slim_ast",
+    # Outline view
+    "to_outline",
 ]
 
 
@@ -151,14 +153,14 @@ _STRUCTURAL_KINDS = {
     "Unit", "Program", "Library", "Package",
     "InterfaceSection", "ImplementationSection",
     "UsesClause", "UsesItem",
-    "TypeSection", "TypeDecl",
+    "TypeDecl",
     "ClassType", "RecordType", "InterfaceType", "DispinterfaceType", "ObjectType",
     "EnumType", "SubrangeType", "SetType", "ArrayType", "PointerType",
     "ProcType", "FileType", "PackedType",
     "MethodDecl", "FieldDecl", "PropertyDecl", "VisibilitySection",
     "RoutineDecl",
-    "ConstSection", "ConstDecl", "TypedConstDecl",
-    "VarSection", "VarDecl",
+    "ConstDecl", "TypedConstDecl",
+    "VarDecl",
     "ExportsSection", "ExportsItem",
     "DfmObject", "DfmProperty",
     "GroupProject", "ProjectRef", "DprojProject",
@@ -173,17 +175,27 @@ _STRIP_KEYS = {"body", "statements", "condition", "elseStmt",
                "thenStmt", "initStmt", "finalStmt",
                "initSection", "finalSection"}
 
+# Wrapper section kinds whose items are inlined into the parent declarations list
+_FLATTEN_KINDS = {"TypeSection", "ConstSection", "VarSection"}
+
 
 def slim_ast(node: object) -> object:
     """Return a structural-only view of an AST node.
 
-    Removes ``startPos``/``endPos`` from every node and strips routine bodies
-    and expression trees, keeping only declarations: units, uses clauses,
-    classes, records, interfaces, methods, fields, properties, consts, vars.
+    Removes ``startPos``/``endPos`` from every node, strips routine bodies
+    and expression trees, and flattens TypeSection/ConstSection/VarSection
+    wrappers so declarations appear directly in their parent list.
     """
     if isinstance(node, list):
         result = [slim_ast(item) for item in node]
-        return [item for item in result if item not in (None, [], {})]
+        flattened = []
+        for item in result:
+            if isinstance(item, dict) and item.get("kind") in _FLATTEN_KINDS:
+                flattened.extend(item.get("items", []))
+            else:
+                if item not in (None, [], {}):
+                    flattened.append(item)
+        return flattened
 
     if not isinstance(node, dict):
         return node
@@ -209,3 +221,186 @@ def slim_ast(node: object) -> object:
     # Drop empty containers produced by stripping
     out = {k: v for k, v in out.items() if v not in (None, [], {})}
     return out
+
+
+# ---------------------------------------------------------------------------
+# Outline view — compact text for LLM consumption
+# ---------------------------------------------------------------------------
+
+_SYSTEM_PREFIXES = (
+    "System.", "Vcl.", "Winapi.", "FMX.", "Web.", "Xml.",
+    "Data.", "FireDAC.", "Soap.", "Datasnap.", "REST.",
+    "IdHTTP", "SysUtils", "Classes", "Math", "StrUtils",
+    "DateUtils", "IOUtils", "RegularExpressions",
+)
+
+_BULK_LABELS = {"sql", "helper"}
+_MAX_METHODS = 8
+
+
+def _outline_label(unit_name: str, ancestors: list) -> str:
+    n = unit_name.lower()
+    anc = " ".join(a.get("name", "") for a in ancestors if isinstance(a, dict)).lower()
+    if n.startswith("udm") or "tdatamodule" in anc:
+        return "datamodule"
+    if n.startswith("ufrm") or "tform" in anc:
+        return "form"
+    if n.startswith("upsq") or n.startswith("usql"):
+        return "sql"
+    if n.startswith("uhel"):
+        return "helper"
+    if n.startswith("upcta") or "tbasetabela" in anc:
+        return "table"
+    if n.startswith("ucls") or "facade" in n:
+        return "facade"
+    return "unit"
+
+
+def _fmt_params(params: list) -> str:
+    parts = []
+    for pg in params:
+        if not isinstance(pg, dict):
+            continue
+        names = ",".join(pg.get("names", []))
+        tr = pg.get("typeRef", {}) or {}
+        tname = tr.get("name", "")
+        parts.append(f"{names}:{tname}" if tname else names)
+    return ",".join(parts)
+
+
+def _method_tokens(members: list) -> list:
+    out = []
+    for m in members:
+        if not isinstance(m, dict) or m.get("kind") != "MethodDecl":
+            continue
+        vis = m.get("visibility", "public")
+        prefix = "+" if vis in ("public", "published") else "-"
+        if m.get("isClassMember"):
+            prefix = "+class "
+        name = m.get("name", "?")
+        params = m.get("params", [])
+        ret = m.get("returnType") or {}
+        if params or ret.get("name"):
+            ret_str = f":{ret['name']}" if ret.get("name") else ""
+            out.append(f"{prefix}{name}({_fmt_params(params)}){ret_str}")
+        else:
+            out.append(f"{prefix}{name}")
+    return out
+
+
+def _render_members(members: list, lines: list, indent: str = "  ") -> None:
+    tokens = _method_tokens(members)
+    if not tokens:
+        return
+    simple = [t for t in tokens if "(" not in t]
+    complex_ = [t for t in tokens if "(" in t]
+    for i in range(0, len(simple), 6):
+        lines.append(indent + " ".join(simple[i:i + 6]))
+    for t in complex_[:_MAX_METHODS]:
+        lines.append(indent + t)
+    if len(tokens) > _MAX_METHODS:
+        lines.append(f"{indent}… +{len(tokens) - _MAX_METHODS} more")
+
+
+def _outline_unit(node: dict) -> str:
+    name = node.get("name", "?")
+    iface = node.get("interface", {})
+    uses_clause = iface.get("uses", {})
+    decls = iface.get("declarations", [])
+
+    local_uses = [
+        i["name"] for i in uses_clause.get("items", [])
+        if isinstance(i, dict)
+        and not any(i.get("name", "").startswith(p) for p in _SYSTEM_PREFIXES)
+    ]
+
+    all_ancestors: list = []
+    for d in decls:
+        if isinstance(d, dict) and d.get("kind") == "TypeDecl":
+            all_ancestors.extend(
+                d.get("typeDefinition", {}).get("ancestors", [])
+            )
+
+    label = _outline_label(name, all_ancestors)
+
+    primary: dict | None = None
+    for d in decls:
+        if isinstance(d, dict) and d.get("kind") == "TypeDecl":
+            if d.get("typeDefinition", {}).get("kind") in (
+                "ClassType", "RecordType", "InterfaceType"
+            ):
+                primary = d
+                break
+
+    header = f"[{name}] {label}"
+    if primary:
+        td = primary["typeDefinition"]
+        ancs = [a.get("name") for a in td.get("ancestors", []) if a.get("name")]
+        anc_str = f"({',' .join(ancs)})" if ancs else ""
+        header += f" > {primary['name']}{anc_str}"
+    if local_uses:
+        header += f" uses: {', '.join(local_uses)}"
+
+    lines = [header]
+
+    if label in _BULK_LABELS:
+        n = sum(1 for d in decls if isinstance(d, dict) and d.get("kind") == "RoutineDecl")
+        if n:
+            lines.append(f"  — {n} routines")
+        return "\n".join(lines)
+
+    if primary:
+        _render_members(primary["typeDefinition"].get("members", []), lines)
+
+    for d in decls:
+        if d is primary or not isinstance(d, dict):
+            continue
+        if d.get("kind") == "TypeDecl" and d.get("typeDefinition", {}).get("kind") in (
+            "ClassType", "RecordType", "InterfaceType"
+        ):
+            tokens = _method_tokens(d["typeDefinition"].get("members", []))
+            if tokens:
+                lines.append(f"  CLASS {d['name']}: {' '.join(tokens[:6])}")
+
+    return "\n".join(lines)
+
+
+def to_outline(ast: dict) -> str:
+    """Return a compact text outline of a slim AST for LLM consumption.
+
+    Accepts the output of ``slim_ast()``. Typically 15-25x fewer tokens
+    than the JSON representation.
+    """
+    lines: list = []
+    kind = ast.get("kind", "")
+
+    if kind == "Unit":
+        lines.append(_outline_unit(ast))
+
+    elif kind == "GroupProject":
+        for proj in ast.get("resolvedProjects", []):
+            src = proj.get("mainSource", proj.get("filename", "?"))
+            plat = proj.get("platform", "")
+            cfg = proj.get("config", "")
+            # Units may be at dproj level or nested inside mainSourceAst
+            main_ast = proj.get("mainSourceAst", {})
+            resolved = proj.get("resolvedUnits") or main_ast.get("resolvedUnits", [])
+            unit_count = len(proj.get("units", resolved))
+            lines.append(f"// {src} — {plat}/{cfg} — {unit_count} units")
+            for u in resolved:
+                if isinstance(u, dict) and u.get("kind") == "Unit":
+                    lines.append(_outline_unit(u))
+            lines.append("")
+
+    elif kind in ("Program", "Library"):
+        lines.append(f"// {ast.get('name', '?')}")
+        for u in ast.get("resolvedUnits", []):
+            if isinstance(u, dict) and u.get("kind") == "Unit":
+                lines.append(_outline_unit(u))
+
+    elif kind == "MultiUnit":
+        for u in ast.get("units", []):
+            if isinstance(u, dict) and u.get("kind") == "Unit":
+                lines.append(_outline_unit(u))
+
+    return "\n".join(lines)

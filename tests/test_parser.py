@@ -61,6 +61,104 @@ class TestUnitStructure:
         assert ast["kind"] == "Library"
 
 
+class TestToOutline:
+    def test_basic_unit(self):
+        src = (
+            "unit uOperacoesMat; interface uses Math; "
+            "type TRound = class public "
+            "class function Arredondar(pValor, pCasas: Double): Double; "
+            "end; implementation end."
+        )
+        slim = pda.slim_ast(pda.parse_source(src, "uOperacoesMat.pas"))
+        outline = pda.to_outline(slim)
+        assert "[uOperacoesMat]" in outline
+        assert "TRound" in outline
+        assert "Arredondar" in outline
+
+    def test_uses_filters_system_units(self):
+        src = "unit uFoo; interface uses System.SysUtils, Vcl.Forms, uMyUnit; implementation end."
+        slim = pda.slim_ast(pda.parse_source(src, "uFoo.pas"))
+        outline = pda.to_outline(slim)
+        assert "System.SysUtils" not in outline
+        assert "Vcl.Forms" not in outline
+        assert "uMyUnit" in outline
+
+    def test_returns_string(self):
+        src = "unit Foo; interface implementation end."
+        slim = pda.slim_ast(pda.parse_source(src, "Foo.pas"))
+        result = pda.to_outline(slim)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_outline_smaller_than_json(self):
+        src = (
+            "unit uOperacoesMat; interface uses Math; type "
+            "TRound = class public "
+            "class function Arredondar(pValor, pCasas: Double): Double; end; "
+            "TMultiplic = class public "
+            "class function MultiplicarQtde(pQtde, pValor: Double): Double; end; "
+            "implementation end."
+        )
+        slim = pda.slim_ast(pda.parse_source(src, "uOperacoesMat.pas"))
+        outline = pda.to_outline(slim)
+        assert len(outline) < len(json.dumps(slim))
+
+
+class TestSlimAstFlatten:
+    def test_type_section_flattened(self):
+        src = "unit T; interface type TFoo = class end; implementation end."
+        slim = pda.slim_ast(pda.parse_source(src, "T.pas"))
+        decls = slim["interface"]["declarations"]
+        kinds = [d["kind"] for d in decls]
+        assert "TypeSection" not in kinds
+        assert "TypeDecl" in kinds
+
+    def test_const_section_flattened(self):
+        src = "unit T; interface const X = 1; implementation end."
+        slim = pda.slim_ast(pda.parse_source(src, "T.pas"))
+        decls = slim["interface"]["declarations"]
+        kinds = [d["kind"] for d in decls]
+        assert "ConstSection" not in kinds
+        assert "ConstDecl" in kinds
+
+    def test_var_section_flattened(self):
+        src = "unit T; interface var X: Integer; implementation end."
+        slim = pda.slim_ast(pda.parse_source(src, "T.pas"))
+        decls = slim["interface"]["declarations"]
+        kinds = [d["kind"] for d in decls]
+        assert "VarSection" not in kinds
+        assert "VarDecl" in kinds
+
+
+class TestDprCompilerDirectiveInUses:
+    def test_compiler_dir_after_path_string(self):
+        src = (
+            "program Foo;\n"
+            "uses\n"
+            "  UnitA in 'UnitA.pas' {$R *.res},\n"
+            "  UnitB in 'UnitB.pas';\n"
+            "begin end.\n"
+        )
+        ast = parse_pas(src)
+        assert ast["kind"] == "Program"
+        uses = ast["uses"]
+        assert uses["kind"] == "UsesClause"
+        names = [i["name"] for i in uses["items"]]
+        assert names == ["UnitA", "UnitB"]
+
+    def test_compiler_dir_before_semi(self):
+        src = (
+            "program Foo;\n"
+            "uses\n"
+            "  UnitA in 'UnitA.pas'\n"
+            "  {$R *.res};\n"
+            "begin end.\n"
+        )
+        ast = parse_pas(src)
+        assert ast["kind"] == "Program"
+        assert ast["uses"]["items"][0]["name"] == "UnitA"
+
+
 # ---------------------------------------------------------------------------
 # Type declarations
 # ---------------------------------------------------------------------------

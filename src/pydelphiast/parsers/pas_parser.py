@@ -226,6 +226,7 @@ class PasParser(BaseParser):
             if self.check(TT.SEMI):  # trailing comma before semicolon
                 break
             items.append(self._parse_uses_item())
+        self.skip_compiler_dirs()
         self.expect(TT.SEMI)
         return self._node("UsesClause", start, items=items)
 
@@ -236,6 +237,7 @@ class PasParser(BaseParser):
         if self.check(TT.IN):
             self.advance()
             path = self.expect(TT.STRING).value
+        self.skip_compiler_dirs()
         return self._node("UsesItem", start, name=name, path=path)
 
     # ==================================================================
