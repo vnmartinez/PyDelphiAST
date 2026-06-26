@@ -564,3 +564,41 @@ class TestJsonOutput:
     def test_parse_source_dfm(self):
         ast = pda.parse_source("object F: TF\nend", "F.dfm")
         assert ast["kind"] == "DfmObject"
+
+
+# ---------------------------------------------------------------------------
+# parse_file filename stamping
+# ---------------------------------------------------------------------------
+
+class TestParseFileFilename:
+    def test_pas_file_gets_absolute_filename(self, tmp_path):
+        src = "unit UTest;\ninterface\nimplementation\nend.\n"
+        p = tmp_path / "UTest.pas"
+        p.write_text(src, encoding="utf-8")
+        ast = pda.parse_file(str(p), include_forms=False)
+        assert ast.get("filename") == str(p.resolve())
+
+    def test_dfm_file_gets_absolute_filename(self, tmp_path):
+        src = "object Form1: TForm1\nend\n"
+        p = tmp_path / "Form1.dfm"
+        p.write_text(src, encoding="utf-8")
+        ast = pda.parse_file(str(p))
+        assert ast.get("filename") == str(p.resolve())
+
+    def test_slim_ast_preserves_filename(self, tmp_path):
+        src = "unit UTest;\ninterface\nimplementation\nend.\n"
+        p = tmp_path / "UTest.pas"
+        p.write_text(src, encoding="utf-8")
+        ast = pda.parse_file(str(p), include_forms=False)
+        slim = pda.slim_ast(ast)
+        assert slim.get("filename") == str(p.resolve())
+
+    def test_outline_header_contains_filename(self, tmp_path):
+        src = "unit ULogin;\ninterface\ntype\n  TLogin = class(TForm)\n  end;\nimplementation\nend.\n"
+        p = tmp_path / "ULogin.pas"
+        p.write_text(src, encoding="utf-8")
+        ast = pda.parse_file(str(p), include_forms=False)
+        slim = pda.slim_ast(ast)
+        outline = pda.to_outline(slim)
+        abs_path = str(p.resolve())
+        assert f"[ULogin] {abs_path}" in outline

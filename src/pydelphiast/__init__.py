@@ -87,8 +87,11 @@ def parse_file(
     with open(path, encoding=encoding, errors="replace") as fh:
         src = fh.read()
 
+    abs_path = os.path.abspath(path)
+
     if ext in (".pas", ".dpl", ".dpk"):
         ast = parse_pas(src, path)
+        ast["filename"] = abs_path
         if include_forms:
             dfm_path = os.path.splitext(path)[0] + ".dfm"
             if os.path.isfile(dfm_path):
@@ -97,7 +100,9 @@ def parse_file(
         return ast
 
     if ext in (".dfm", ".xfm"):
-        return parse_dfm(src, path)
+        result = parse_dfm(src, path)
+        result["filename"] = abs_path
+        return result
 
     raise ValueError(f"Unsupported file extension: {ext!r}")
 
@@ -332,7 +337,11 @@ def _outline_unit(node: dict) -> str:
                 primary = d
                 break
 
-    header = f"[{name}] {label}"
+    filename = node.get("filename", "")
+    header = f"[{name}]"
+    if filename:
+        header += f" {filename}"
+    header += f" {label}"
     if primary:
         td = primary["typeDefinition"]
         ancs = [a.get("name") for a in td.get("ancestors", []) if a.get("name")]
