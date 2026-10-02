@@ -87,6 +87,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "> methods) in TOON format to <stem>.toon",
     )
     p.add_argument(
+        "-D", "--define",
+        action="append",
+        default=[],
+        help="Define conditional compilation symbol (can be repeated)",
+    )
+    p.add_argument(
         "--version",
         action="version",
         version=f"pydelphiast {pda.__version__}",
@@ -117,12 +123,14 @@ def main(argv: list[str] | None = None) -> int:
                     encoding=args.encoding,
                     include_forms=include_forms,
                     stop_on_error=args.stop_on_error,
+                    defines=args.define,
                 )
             else:
                 ast = pda.parse_file(
                     path,
                     encoding=args.encoding,
                     include_forms=include_forms,
+                    defines=args.define,
                 )
             results.append(ast)
         except Exception as exc:

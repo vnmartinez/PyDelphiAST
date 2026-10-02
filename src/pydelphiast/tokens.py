@@ -166,6 +166,8 @@ class TT(Enum):
     RPAREN = auto()      # )
     LBRACKET = auto()    # [
     RBRACKET = auto()    # ]
+    EXCLAMATION = auto() # !
+    AMPERSAND = auto()   # &
 
     # ── Special ────────────────────────────────────────────────────────────
     COMPILER_DIR = auto()   # {$...}  or  (*$...*)

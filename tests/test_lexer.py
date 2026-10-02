@@ -183,3 +183,17 @@ class TestSnippet:
         assert types[0] == TT.USES
         assert TT.COMMA in types
         assert types[-1] == TT.SEMI
+
+    def test_exclamation_token(self):
+        src = "!"
+        assert toks(src) == [TT.EXCLAMATION]
+
+    def test_ampersand_escaped_keyword(self):
+        src = "&type"
+        ts = tokenize(src)
+        assert ts[0].type == TT.IDENT
+        assert ts[0].value == "type"
+
+    def test_ampersand_standalone(self):
+        src = "&"
+        assert toks(src) == [TT.AMPERSAND]

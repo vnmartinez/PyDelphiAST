@@ -24,14 +24,15 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Optional
+from typing import Iterable, Optional
 
 from .errors import DelphiError, LexerError, ParseError
 from .lexer import Token, tokenize
 from .parsers.dfm_parser import parse_dfm
 from .parsers.groupproj_parser import parse_dproj, parse_groupproj
 from .parsers.pas_parser import parse_pas
-from .project import DelphiProject
+from .preprocessor import preprocess_tokens
+from .project import DelphiProject, read_source
 from .toon import encode_toon, extract_compact_hierarchy, to_toon
 
 __version__ = "0.1.0"
@@ -40,6 +41,7 @@ __all__ = [
     "parse_file",
     "parse_source",
     "parse_project",
+    "read_source",
     # Low-level parsers
     "parse_pas",
     "parse_dfm",
@@ -47,8 +49,9 @@ __all__ = [
     "parse_dproj",
     # Project walker
     "DelphiProject",
-    # Tokeniser
+    # Tokeniser & Preprocessor
     "tokenize",
+    "preprocess_tokens",
     "Token",
     # Errors
     "DelphiError",
@@ -73,6 +76,7 @@ def parse_file(
     path: str,
     encoding: str = "utf-8-sig",
     include_forms: bool = True,
+    defines: Optional[Iterable[str]] = None,
 ) -> dict:
     """Parse a Delphi file, automatically following the project hierarchy.
 
@@ -90,21 +94,20 @@ def parse_file(
             path,
             encoding=encoding,
             include_forms=include_forms,
+            defines=defines,
         ).parse()
 
-    with open(path, encoding=encoding, errors="replace") as fh:
-        src = fh.read()
-
+    src = read_source(path, encoding=encoding)
     abs_path = os.path.abspath(path)
 
     if ext in (".pas", ".dpl", ".dpk"):
-        ast = parse_pas(src, path)
+        ast = parse_pas(src, path, defines=defines)
         ast["filename"] = abs_path
         if include_forms:
             dfm_path = os.path.splitext(path)[0] + ".dfm"
             if os.path.isfile(dfm_path):
-                with open(dfm_path, encoding=encoding, errors="replace") as fh:
-                    ast["form"] = parse_dfm(fh.read(), dfm_path)
+                dfm_src = read_source(dfm_path, encoding=encoding)
+                ast["form"] = parse_dfm(dfm_src, dfm_path)
                 ast["form"]["filename"] = os.path.abspath(dfm_path)
         return ast
 
@@ -119,6 +122,7 @@ def parse_file(
 def parse_source(
     src: str,
     filename: str = "<unknown>",
+    defines: Optional[Iterable[str]] = None,
 ) -> dict:
     """Parse a Delphi source string.
 
@@ -131,7 +135,7 @@ def parse_source(
         return parse_groupproj(src, filename)
     if ext == ".dproj":
         return parse_dproj(src, filename)
-    return parse_pas(src, filename)
+    return parse_pas(src, filename, defines=defines)
 
 
 def parse_project(
@@ -139,6 +143,7 @@ def parse_project(
     encoding: str = "utf-8-sig",
     include_forms: bool = True,
     stop_on_error: bool = False,
+    defines: Optional[Iterable[str]] = None,
 ) -> dict:
     """Parse an entire Delphi project, following the file hierarchy.
 
@@ -150,6 +155,7 @@ def parse_project(
         encoding=encoding,
         include_forms=include_forms,
         stop_on_error=stop_on_error,
+        defines=defines,
     ).parse()
 
 

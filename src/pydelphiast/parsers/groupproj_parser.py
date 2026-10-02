@@ -129,6 +129,17 @@ def parse_dproj(src: str, filename: str = "<unknown>") -> dict:
         if c is not None and not config:
             config = _text(c)
 
+    # ── Conditional defines ─────────────────────────────────────────────
+    defines: List[str] = []
+    for pg in _findall(root, "m:PropertyGroup"):
+        dcc_def = _find(pg, "m:DCC_Define")
+        if dcc_def is not None:
+            txt = _text(dcc_def)
+            for part in txt.split(";"):
+                part = part.strip()
+                if part and not part.startswith("$(") and part not in defines:
+                    defines.append(part)
+
     # ── Referenced units / forms ────────────────────────────────────────
     units: List[dict] = []
     forms: List[dict] = []
@@ -150,6 +161,7 @@ def parse_dproj(src: str, filename: str = "<unknown>") -> dict:
         "mainSource": main_source,
         "platform": platform,
         "config": config,
+        "defines": defines,
         "units": units,
         "forms": forms,
     }

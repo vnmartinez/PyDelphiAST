@@ -20,10 +20,11 @@ Handles the full Delphi 10 (Seattle) grammar including:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ..errors import ParseError
 from ..lexer import Token, tokenize
+from ..preprocessor import preprocess_tokens
 from ..tokens import (
     CALLING_CONVENTIONS,
     DIRECTIVE_TYPES,
@@ -108,12 +109,34 @@ class PasParser(BaseParser):
                           implementation=impl,
                           initialization=init)
 
+    def _skip_preamble_to_uses(self) -> None:
+        """Skip unexpected tokens (such as compiler break messages) before uses."""
+        self.skip_compiler_dirs()
+        valid_starters = (
+            TT.USES, TT.BEGIN, TT.ASM, TT.TYPE, TT.CONST, TT.VAR,
+            TT.THREADVAR, TT.PROCEDURE, TT.FUNCTION, TT.CONSTRUCTOR,
+            TT.DESTRUCTOR, TT.OPERATOR, TT.EXPORTS, TT.LABEL, TT.RESOURCESTRING, TT.EOF
+        )
+        if not self.check(*valid_starters):
+            # Scan ahead to see if 'uses' exists before begin/asm
+            has_uses = False
+            for idx in range(self.pos, len(self.tokens)):
+                tok_t = self.tokens[idx].type
+                if tok_t == TT.USES:
+                    has_uses = True
+                    break
+                if tok_t in (TT.BEGIN, TT.ASM):
+                    break
+            if has_uses:
+                while not self.check(TT.USES, TT.EOF):
+                    self.advance()
+
     def _parse_program(self) -> dict:
         start = self.current
         self.expect(TT.PROGRAM)
         name = self.parse_qualified_name()
         self.expect(TT.SEMI)
-        self.skip_compiler_dirs()
+        self._skip_preamble_to_uses()
         uses = self._parse_uses_clause() if self.check(TT.USES) else None
         # Programs may have top-level var/const/type/label sections before begin
         decls = self._parse_decl_list(allow_impl=True)
@@ -127,7 +150,7 @@ class PasParser(BaseParser):
         self.expect(TT.LIBRARY)
         name = self.parse_qualified_name()
         self.expect(TT.SEMI)
-        self.skip_compiler_dirs()
+        self._skip_preamble_to_uses()
         uses = self._parse_uses_clause() if self.check(TT.USES) else None
         decls = self._parse_decl_list(allow_impl=True)
         block = self._parse_block()
@@ -1907,7 +1930,12 @@ class PasParser(BaseParser):
 # Public factory
 # ---------------------------------------------------------------------------
 
-def parse_pas(src: str, filename: str = "<unknown>") -> dict:
+def parse_pas(
+    src: str,
+    filename: str = "<unknown>",
+    defines: Optional[Iterable[str]] = None,
+) -> dict:
     """Tokenise and parse a Delphi .pas / .dpr source string; return AST dict."""
     tokens = tokenize(src, filename)
+    tokens = preprocess_tokens(tokens, defines)
     return PasParser(tokens, filename).parse()

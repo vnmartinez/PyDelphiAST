@@ -13,12 +13,60 @@ Usage::
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 from .errors import ParseError
 from .parsers.dfm_parser import parse_dfm
 from .parsers.groupproj_parser import parse_dproj, parse_groupproj
 from .parsers.pas_parser import parse_pas
+
+
+def read_source(path: str, encoding: str = "auto") -> str:
+    """Read a Delphi source file with robust encoding detection.
+
+    Supports UTF-8 (with or without BOM), UTF-16, and falls back to CP1252
+    (standard Delphi ANSI codepage on Windows) and Latin-1.
+    """
+    if encoding and encoding != "auto":
+        if encoding.lower() in ("utf-8", "utf-8-sig"):
+            with open(path, "rb") as fh:
+                raw = fh.read()
+            if raw.startswith(b"\xef\xbb\xbf"):
+                return raw.decode("utf-8-sig", errors="replace")
+            try:
+                return raw.decode("utf-8")
+            except UnicodeDecodeError:
+                try:
+                    return raw.decode("cp1252")
+                except UnicodeDecodeError:
+                    return raw.decode("latin-1", errors="replace")
+        else:
+            with open(path, encoding=encoding, errors="replace") as fh:
+                return fh.read()
+
+    with open(path, "rb") as fh:
+        raw = fh.read()
+
+    # BOM detection
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig", errors="replace")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", errors="replace")
+
+    # Try strict UTF-8
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+
+    # Try CP1252
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        pass
+
+    # Fallback to Latin-1
+    return raw.decode("latin-1", errors="replace")
 
 
 class DelphiProject:
@@ -36,12 +84,14 @@ class DelphiProject:
     root:
         Path to the root file.
     encoding:
-        File encoding (default ``utf-8-sig`` to handle BOM).
+        File encoding (default ``utf-8-sig`` to handle BOM, falls back to CP1252).
     include_forms:
         Whether to parse companion .dfm files for each unit (default True).
     stop_on_error:
         When False (default), parse errors are caught and included as error
         nodes in the AST.  When True, the first error raises an exception.
+    defines:
+        Optional set or list of conditional compilation symbols (e.g. ``{"CONFREVENDA"}``).
     """
 
     def __init__(
@@ -50,11 +100,13 @@ class DelphiProject:
         encoding: str = "utf-8-sig",
         include_forms: bool = True,
         stop_on_error: bool = False,
+        defines: Optional[Iterable[str]] = None,
     ) -> None:
         self.root = os.path.abspath(root)
         self.encoding = encoding
         self.include_forms = include_forms
         self.stop_on_error = stop_on_error
+        self.defines: Set[str] = {d.upper() for d in defines} if defines else set()
         self._seen: Set[str] = set()
 
     # ------------------------------------------------------------------
@@ -106,6 +158,8 @@ class DelphiProject:
     def _parse_dproj(self, path: str) -> dict:
         src = self._read(path)
         ast = parse_dproj(src, path)
+        if "defines" in ast and ast["defines"]:
+            self.defines.update(d.upper() for d in ast["defines"])
 
         base_dir = os.path.dirname(path)
         # Resolve main .dpr source
@@ -115,6 +169,16 @@ class DelphiProject:
         return ast
 
     def _parse_dpr(self, path: str) -> dict:
+        # Check for companion .dproj if defines not yet loaded
+        companion_dproj = os.path.splitext(path)[0] + ".dproj"
+        if os.path.isfile(companion_dproj):
+            try:
+                dproj_ast = parse_dproj(self._read(companion_dproj), companion_dproj)
+                if "defines" in dproj_ast and dproj_ast["defines"]:
+                    self.defines.update(d.upper() for d in dproj_ast["defines"])
+            except Exception:
+                pass
+
         src = self._read(path)
         ast = self._safe_parse_pas(src, path)
         ast["filename"] = path
@@ -216,12 +280,11 @@ class DelphiProject:
     # ------------------------------------------------------------------
 
     def _read(self, path: str) -> str:
-        with open(path, encoding=self.encoding, errors="replace") as fh:
-            return fh.read()
+        return read_source(path, encoding=self.encoding)
 
     def _safe_parse_pas(self, src: str, filename: str) -> dict:
         try:
-            return parse_pas(src, filename)
+            return parse_pas(src, filename, defines=self.defines)
         except Exception as exc:
             if self.stop_on_error:
                 raise

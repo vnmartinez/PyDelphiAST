@@ -210,6 +210,16 @@ class Lexer:
             self.tokens.append(Token(TT.COMMA, ",", sl, sc, self.line, self.col))
         elif ch == ";":
             self.tokens.append(Token(TT.SEMI, ";", sl, sc, self.line, self.col))
+        elif ch == "!":
+            self.tokens.append(Token(TT.EXCLAMATION, "!", sl, sc, self.line, self.col))
+        elif ch == "&":
+            nxt = self._ch()
+            if nxt is not None and (nxt.isalpha() or nxt == "_"):
+                tok = self._read_ident(sl, sc)
+                tok.type = TT.IDENT
+                self.tokens.append(tok)
+            else:
+                self.tokens.append(Token(TT.AMPERSAND, "&", sl, sc, self.line, self.col))
         else:
             raise self._error(f"Unexpected character: {ch!r}")
 
