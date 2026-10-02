@@ -17,7 +17,7 @@ import re
 from decimal import Decimal
 from typing import Any, Iterator, List, Optional, Tuple
 
-__all__ = ["encode_toon", "extract_compact_hierarchy"]
+__all__ = ["encode_toon", "extract_compact_hierarchy", "to_toon"]
 
 
 # ---------------------------------------------------------------------------
@@ -444,3 +444,8 @@ def extract_compact_hierarchy(ast: Any, base_dir: Optional[str] = None) -> dict:
         if key:
             out[key] = val
     return out
+
+
+def to_toon(ast: Any, base_dir: Optional[str] = None) -> str:
+    """Return the TOON text of the compact hierarchy of *ast*."""
+    return encode_toon(extract_compact_hierarchy(ast, base_dir))

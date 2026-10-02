@@ -13,6 +13,7 @@ from pydelphiast.toon import (
     _type_str,
     encode_toon,
     extract_compact_hierarchy,
+    to_toon,
 )
 
 
@@ -459,3 +460,61 @@ class TestExtractProject:
         assert out["base"] == str(group_dir).replace("\\", "/")
         assert [u["path"] for u in out["units"]] == ["App/UMain.pas", "Shared/UShared.pas"]
         assert set(out) == {"base", "units"}
+
+
+# ---------------------------------------------------------------------------
+# Task 5 – to_toon end to end + public API
+# ---------------------------------------------------------------------------
+
+class TestToToon:
+    def test_public_api_exports(self):
+        assert pda.to_toon is to_toon
+        assert pda.extract_compact_hierarchy is extract_compact_hierarchy
+        assert pda.encode_toon is encode_toon
+        for name in ("to_toon", "extract_compact_hierarchy", "encode_toon"):
+            assert name in pda.__all__
+
+    def test_group_toon_text(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "Group.groupproj"))
+        base = str(group_dir).replace("\\", "/")
+        assert pda.to_toon(ast) == (
+            f'base: "{base}"\n'
+            "group:\n"
+            "  name: Group\n"
+            "  path: Group.groupproj\n"
+            "  projects[3]:\n"
+            "    - name: App\n"
+            "      path: App/App.dproj\n"
+            "      source: App/App.dpr\n"
+            "      platform: Win32\n"
+            "      config: Debug\n"
+            "      units[2]:\n"
+            "        - name: UMain\n"
+            "          path: App/UMain.pas\n"
+            "          form:\n"
+            "            name: MainForm\n"
+            "            class: TMainForm\n"
+            "            path: App/UMain.dfm\n"
+            "          types[1]:\n"
+            "            - name: TMainForm\n"
+            "              kind: class\n"
+            "              ancestors[1]: TForm\n"
+            "              methods[1]{vis,kind,name,params,returns}:\n"
+            '                public,function,Ok,"const S:string",Boolean\n'
+            "        - name: UShared\n"
+            "          path: Shared/UShared.pas\n"
+            "    - name: Tool\n"
+            "      path: Tool/Tool.dproj\n"
+            "      source: Tool/Tool.dpr\n"
+            "      platform: Win32\n"
+            "      config: Debug\n"
+            "      units[1]{name,path,ref}:\n"
+            "        UShared,Shared/UShared.pas,true\n"
+            "    - name: Gone\n"
+            "      path: Gone/Gone.dproj\n"
+            "      missing: true"
+        )
+
+    def test_toon_is_smaller_than_json(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "Group.groupproj"))
+        assert len(pda.to_toon(ast)) * 5 < len(pda.to_json(ast))

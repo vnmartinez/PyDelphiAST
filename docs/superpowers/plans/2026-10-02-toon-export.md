@@ -1271,7 +1271,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `encode_toon` (Task 1), `extract_compact_hierarchy` (Tasks 3-4).
 - Produces: `to_toon(ast: Any, base_dir: Optional[str] = None) -> str`; `pydelphiast.to_toon`, `pydelphiast.extract_compact_hierarchy`, `pydelphiast.encode_toon` (also in `pydelphiast.__all__`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the import block at the top of `tests/test_toon.py` with:
 
@@ -1354,12 +1354,12 @@ class TestToToon:
         assert len(pda.to_toon(ast)) * 5 < len(pda.to_json(ast))
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `pytest tests/test_toon.py -v -k ToToon`
 Expected: FAIL — `ImportError: cannot import name 'to_toon'`
 
-- [ ] **Step 3: Add `to_toon`**
+- [x] **Step 3: Add `to_toon`**
 
 In `src/pydelphiast/toon.py` change `__all__` to
 
@@ -1375,7 +1375,7 @@ def to_toon(ast: Any, base_dir: Optional[str] = None) -> str:
     return encode_toon(extract_compact_hierarchy(ast, base_dir))
 ```
 
-- [ ] **Step 4: Re-export from the package**
+- [x] **Step 4: Re-export from the package**
 
 In `src/pydelphiast/__init__.py`, after `from .project import DelphiProject` add
 
@@ -1410,12 +1410,12 @@ Also add to the module docstring "Quick start" block:
     text = pda.to_toon(pda.parse_project("MyApp.groupproj"))
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: all tests PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/pydelphiast/toon.py tests/test_toon.py src/pydelphiast/__init__.py

@@ -15,6 +15,9 @@ Quick start::
 
     # Parse source string directly
     ast = pda.parse_source(source_text, filename="MyUnit.pas")
+
+    # Compact hierarchy as TOON (token-efficient, for LLM contexts)
+    text = pda.to_toon(pda.parse_project("MyApp.groupproj"))
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from .parsers.dfm_parser import parse_dfm
 from .parsers.groupproj_parser import parse_dproj, parse_groupproj
 from .parsers.pas_parser import parse_pas
 from .project import DelphiProject
+from .toon import encode_toon, extract_compact_hierarchy, to_toon
 
 __version__ = "0.1.0"
 __all__ = [
@@ -54,6 +58,10 @@ __all__ = [
     "slim_ast",
     # Outline view
     "to_outline",
+    # TOON export
+    "to_toon",
+    "extract_compact_hierarchy",
+    "encode_toon",
 ]
 
 
