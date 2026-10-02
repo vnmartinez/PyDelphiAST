@@ -246,6 +246,7 @@ _TYPE_KINDS = {
 _SECTION_KINDS = ("TypeSection", "ConstSection", "VarSection")
 _PLURAL = {"group": "groups", "project": "projects", "unit": "units",
            "form": "forms", "error": "errors"}
+_PROJECT_KINDS = ("DprojProject", "Program", "Library", "Package")
 
 
 def _prune(d: dict) -> dict:
@@ -266,6 +267,12 @@ def _rel(path: Any, base: str) -> str:
     except ValueError:
         rel = abs_path
     return rel.replace("\\", "/")
+
+
+def _resolve(anchor: str, rel: str) -> str:
+    if not rel:
+        return ""
+    return os.path.normpath(os.path.join(os.path.dirname(anchor), rel))
 
 
 def _iter_decls(section: Any) -> Iterator[dict]:
@@ -338,8 +345,60 @@ def _compact_unit(node: dict, base: str) -> dict:
     return _prune(out)
 
 
+def _compact_project(node: dict, base: str) -> dict:
+    kind = node.get("kind")
+    units: list = []
+    if kind == "DprojProject":
+        path = node.get("filename", "")
+        main = node.get("mainSourceAst") or {}
+        main_failed = main.get("kind") == "ParseError"
+        source = main.get("filename") or _resolve(path, node.get("mainSource", ""))
+        out: dict = {
+            "name": (None if main_failed else main.get("name")) or _stem(path),
+            "path": _rel(path, base),
+            "source": _rel(source, base),
+            "platform": node.get("platform"),
+            "config": node.get("config"),
+        }
+        if main_failed:
+            out["error"] = main.get("message", "")
+        units = main.get("resolvedUnits") or []
+    elif kind in ("Program", "Library", "Package"):
+        path = node.get("filename", "")
+        out = {"name": node.get("name") or _stem(path), "path": _rel(path, base)}
+        units = node.get("resolvedUnits") or []
+    elif kind == "ParseError":
+        path = node.get("filename", "")
+        out = {"name": _stem(path), "path": _rel(path, base),
+               "error": node.get("message", "")}
+        units = node.get("resolvedUnits") or []
+    else:  # ProjectRef (missing) / UnknownProjectRef
+        path = node.get("path", "")
+        out = {"name": _stem(path), "path": _rel(path, base)}
+        if node.get("missing"):
+            out["missing"] = True
+    out["units"] = [_compact_unit(u, base) for u in units if isinstance(u, dict)]
+    return _prune(out)
+
+
+def _compact_group(node: dict, base: str) -> dict:
+    path = node.get("filename", "")
+    projects: List[dict] = []
+    for p in node.get("resolvedProjects") or []:
+        if not isinstance(p, dict):
+            continue
+        if p.get("kind") == "ProjectRef":
+            p = dict(p, path=_resolve(path, p.get("path", "")))
+        projects.append(_compact_project(p, base))
+    return _prune({"name": _stem(path), "path": _rel(path, base), "projects": projects})
+
+
 def _compact_root(node: dict, base: str) -> Tuple[Optional[str], Optional[dict]]:
     kind = node.get("kind")
+    if kind == "GroupProject":
+        return "group", _compact_group(node, base)
+    if kind in _PROJECT_KINDS:
+        return "project", _compact_project(node, base)
     if kind == "Unit":
         return "unit", _compact_unit(node, base)
     if kind == "DfmObject":

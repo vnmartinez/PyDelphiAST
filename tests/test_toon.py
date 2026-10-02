@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import pydelphiast as pda
@@ -325,3 +327,135 @@ class TestExtractUnit:
         (tmp_path / "U.dfm").write_text("object F: TF\nend\n", encoding="utf-8")
         ast = pda.parse_file(str(tmp_path / "U.pas"))
         assert ast["form"]["filename"] == str((tmp_path / "U.dfm").resolve())
+
+
+# ---------------------------------------------------------------------------
+# Task 4 – project / group extraction
+# ---------------------------------------------------------------------------
+
+_NS = "http://schemas.microsoft.com/developer/msbuild/2003"
+
+
+def _write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _dproj(main_source: str) -> str:
+    return (
+        f'<Project xmlns="{_NS}">\n'
+        "  <PropertyGroup>\n"
+        f"    <MainSource>{main_source}</MainSource>\n"
+        "    <Config Condition=\"'$(Config)'==''\">Debug</Config>\n"
+        "    <Platform Condition=\"'$(Platform)'==''\">Win32</Platform>\n"
+        "  </PropertyGroup>\n"
+        "</Project>\n"
+    )
+
+
+@pytest.fixture()
+def group_dir(tmp_path: Path) -> Path:
+    """Build: Group.groupproj -> App/App.dproj, Tool/Tool.dproj, Gone/Gone.dproj (missing)."""
+    _write(tmp_path / "Group.groupproj",
+           f'<Project xmlns="{_NS}">\n  <ItemGroup>\n'
+           '    <Projects Include="App\\App.dproj"/>\n'
+           '    <Projects Include="Tool\\Tool.dproj"/>\n'
+           '    <Projects Include="Gone\\Gone.dproj"/>\n'
+           "  </ItemGroup>\n</Project>\n")
+    _write(tmp_path / "App" / "App.dproj", _dproj("App.dpr"))
+    _write(tmp_path / "App" / "App.dpr",
+           "program App;\nuses\n  UMain in 'UMain.pas',\n"
+           "  UShared in '../Shared/UShared.pas';\nbegin\nend.\n")
+    _write(tmp_path / "App" / "UMain.pas",
+           "unit UMain;\ninterface\ntype\n  TMainForm = class(TForm)\n"
+           "  public\n    function Ok(const S: string): Boolean;\n  end;\n"
+           "implementation\nfunction TMainForm.Ok(const S: string): Boolean; begin end;\nend.\n")
+    _write(tmp_path / "App" / "UMain.dfm", "object MainForm: TMainForm\nend\n")
+    _write(tmp_path / "Shared" / "UShared.pas",
+           "unit UShared;\ninterface\nimplementation\nend.\n")
+    _write(tmp_path / "Tool" / "Tool.dproj", _dproj("Tool.dpr"))
+    _write(tmp_path / "Tool" / "Tool.dpr",
+           "program Tool;\nuses\n  UShared in '../Shared/UShared.pas';\nbegin\nend.\n")
+    return tmp_path
+
+
+EXPECTED_GROUP = {
+    "name": "Group",
+    "path": "Group.groupproj",
+    "projects": [
+        {
+            "name": "App",
+            "path": "App/App.dproj",
+            "source": "App/App.dpr",
+            "platform": "Win32",
+            "config": "Debug",
+            "units": [
+                {
+                    "name": "UMain",
+                    "path": "App/UMain.pas",
+                    "form": {"name": "MainForm", "class": "TMainForm",
+                             "path": "App/UMain.dfm"},
+                    "types": [{
+                        "name": "TMainForm", "kind": "class", "ancestors": ["TForm"],
+                        "methods": [{"vis": "public", "kind": "function", "name": "Ok",
+                                     "params": "const S:string", "returns": "Boolean"}],
+                    }],
+                },
+                {"name": "UShared", "path": "Shared/UShared.pas"},
+            ],
+        },
+        {
+            "name": "Tool",
+            "path": "Tool/Tool.dproj",
+            "source": "Tool/Tool.dpr",
+            "platform": "Win32",
+            "config": "Debug",
+            "units": [{"name": "UShared", "path": "Shared/UShared.pas", "ref": True}],
+        },
+        {"name": "Gone", "path": "Gone/Gone.dproj", "missing": True},
+    ],
+}
+
+
+class TestExtractProject:
+    def test_dpr_root_has_filename(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "App" / "App.dpr"))
+        assert ast["filename"] == str(group_dir / "App" / "App.dpr")
+
+    def test_group_hierarchy(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "Group.groupproj"))
+        out = extract_compact_hierarchy(ast)
+        assert out["base"] == str(group_dir).replace("\\", "/")
+        assert out["group"] == EXPECTED_GROUP
+
+    def test_group_hierarchy_from_slim_ast(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "Group.groupproj"))
+        assert extract_compact_hierarchy(pda.slim_ast(ast))["group"] == EXPECTED_GROUP
+
+    def test_dpr_root(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "Tool" / "Tool.dpr"))
+        out = extract_compact_hierarchy(ast)
+        assert out["base"] == str(group_dir / "Tool").replace("\\", "/")
+        assert out["project"] == {
+            "name": "Tool",
+            "path": "Tool.dpr",
+            "units": [{"name": "UShared", "path": "../Shared/UShared.pas"}],
+        }
+
+    def test_dproj_root(self, group_dir):
+        ast = pda.parse_project(str(group_dir / "App" / "App.dproj"))
+        out = extract_compact_hierarchy(ast)
+        assert out["project"]["path"] == "App.dproj"
+        assert out["project"]["source"] == "App.dpr"
+        assert [u["name"] for u in out["project"]["units"]] == ["UMain", "UShared"]
+
+    def test_list_input_groups_by_kind(self, group_dir):
+        asts = [
+            pda.parse_file(str(group_dir / "App" / "UMain.pas")),
+            pda.parse_file(str(group_dir / "Shared" / "UShared.pas")),
+        ]
+        out = extract_compact_hierarchy(asts)
+        assert out["base"] == str(group_dir).replace("\\", "/")
+        assert [u["path"] for u in out["units"]] == ["App/UMain.pas", "Shared/UShared.pas"]
+        assert set(out) == {"base", "units"}

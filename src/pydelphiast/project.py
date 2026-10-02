@@ -117,6 +117,7 @@ class DelphiProject:
     def _parse_dpr(self, path: str) -> dict:
         src = self._read(path)
         ast = self._safe_parse_pas(src, path)
+        ast["filename"] = path
         # Follow uses references to .pas files in the same / nearby directories
         base_dir = os.path.dirname(path)
         ast["resolvedUnits"] = self._resolve_units(ast, base_dir)

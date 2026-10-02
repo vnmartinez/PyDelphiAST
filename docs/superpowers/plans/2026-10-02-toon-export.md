@@ -974,7 +974,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `_prune`, `_stem`, `_rel`, `_compact_unit`, `_compact_form`, `_PLURAL` (Task 3).
 - Produces: `extract_compact_hierarchy` now also handles root kinds `GroupProject` (key `group`), `DprojProject`/`Program`/`Library`/`Package` (key `project`); `_compact_project(node, base) -> dict`, `_compact_group(node, base) -> dict`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the import block at the top of `tests/test_toon.py` with:
 
@@ -1130,12 +1130,12 @@ class TestExtractProject:
         assert set(out) == {"base", "units"}
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `pytest tests/test_toon.py -v -k Project`
 Expected: 5 FAIL (`KeyError: 'filename'` / `'group'` / `'project'`); `test_list_input_groups_by_kind` already passes (units only)
 
-- [ ] **Step 3: Stamp `filename` on the `.dpr` root**
+- [x] **Step 3: Stamp `filename` on the `.dpr` root**
 
 In `src/pydelphiast/project.py`, `_parse_dpr`, replace
 
@@ -1152,7 +1152,7 @@ with
         # Follow uses references to .pas files in the same / nearby directories
 ```
 
-- [ ] **Step 4: Add project/group extraction**
+- [x] **Step 4: Add project/group extraction**
 
 In `src/pydelphiast/toon.py`, insert right after the `_PLURAL = {...}` constant:
 
@@ -1239,17 +1239,17 @@ def _compact_root(node: dict, base: str) -> Tuple[Optional[str], Optional[dict]]
     return None, None
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: all tests PASS
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `pytest -q`
 Expected: full suite PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/pydelphiast/toon.py tests/test_toon.py src/pydelphiast/project.py
