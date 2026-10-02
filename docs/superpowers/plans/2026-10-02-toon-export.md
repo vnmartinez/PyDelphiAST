@@ -53,7 +53,7 @@ Then `pytest -q` → all existing tests PASS.
 - Consumes: nothing.
 - Produces: `encode_toon(value: Any) -> str` (raises `TypeError` for non JSON-like values); private helpers `_fmt_primitive`, `_is_primitive`, used only inside the module.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_toon.py` with:
 
@@ -174,12 +174,12 @@ class TestEncodeToonStructures:
         assert encode_toon([1, 2]) == "[2]: 1,2"
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'pydelphiast.toon'`
 
-- [ ] **Step 3: Implement the encoder**
+- [x] **Step 3: Implement the encoder**
 
 Create `src/pydelphiast/toon.py`:
 
@@ -354,12 +354,12 @@ def encode_toon(value: Any) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: all tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pydelphiast/toon.py tests/test_toon.py
