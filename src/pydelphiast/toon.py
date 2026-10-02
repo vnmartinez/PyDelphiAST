@@ -166,3 +166,66 @@ def encode_toon(value: Any) -> str:
     else:
         lines.append(_fmt_primitive(value))
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Delphi type / parameter formatting
+# ---------------------------------------------------------------------------
+
+def _type_str(node: Any) -> str:
+    """Render a type node (TypeRef, StringType, ...) as compact Delphi text."""
+    if not isinstance(node, dict):
+        return ""
+    kind = node.get("kind", "")
+    if kind == "TypeRef":
+        name = node.get("name", "")
+        args = node.get("typeArgs") or []
+        if args:
+            name += "<" + ",".join(_type_str(a) for a in args) + ">"
+        return name
+    if kind == "StringType":
+        return "string"
+    if kind in ("OpenArrayType", "ArrayType"):
+        elem = node.get("elementType")
+        return "array of " + (_type_str(elem) if elem else "const")
+    if kind == "SetType":
+        return "set of " + _type_str(node.get("baseType"))
+    if kind == "PointerType":
+        return "^" + _type_str(node.get("baseType"))
+    if kind == "ProcType":
+        return "function" if node.get("isFunction") else "procedure"
+    if kind == "MethodReference":
+        return "reference to " + _type_str(node.get("procType"))
+    return kind
+
+
+def _params_str(params: Any) -> str:
+    """Render a parameter list as ``const A,B:string; var C:Integer``."""
+    parts: List[str] = []
+    for pg in params or []:
+        if not isinstance(pg, dict):
+            continue
+        mod = pg.get("modifier")
+        prefix = f"{mod} " if mod else ""
+        if pg.get("kind") == "OpenArrayParam":
+            elem = pg.get("elementType")
+            parts.append(prefix + "array of " + (_type_str(elem) if elem else "const"))
+            continue
+        names = ",".join(pg.get("names") or [])
+        tname = _type_str(pg.get("typeRef"))
+        parts.append(f"{prefix}{names}:{tname}" if tname else f"{prefix}{names}")
+    return "; ".join(parts)
+
+
+def _method_row(m: dict) -> dict:
+    """Return the tabular row ``{vis, kind, name, params, returns}`` of a MethodDecl."""
+    kind = m.get("methodKind", "")
+    if m.get("isClassMember"):
+        kind = "class " + kind
+    return {
+        "vis": m.get("visibility") or "public",
+        "kind": kind,
+        "name": m.get("name", ""),
+        "params": _params_str(m.get("params")),
+        "returns": _type_str(m.get("returnType")),
+    }

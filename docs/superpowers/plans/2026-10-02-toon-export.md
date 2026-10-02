@@ -383,7 +383,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `_params_str(params: Any) -> str` — `const A,B:string; var C:Integer`.
   - `_method_row(m: dict) -> dict` — `{"vis", "kind", "name", "params", "returns"}` (in that key order).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the import block at the top of `tests/test_toon.py` (everything between the docstring and the first `# ----` banner) with:
 
@@ -475,12 +475,12 @@ class TestParamsAndMethodRow:
                                   "name": "Make", "params": "", "returns": "TFoo"}
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: FAIL — `ImportError: cannot import name '_method_row'`
 
-- [ ] **Step 3: Implement the helpers**
+- [x] **Step 3: Implement the helpers**
 
 Append to the end of `src/pydelphiast/toon.py`:
 
@@ -548,12 +548,12 @@ def _method_row(m: dict) -> dict:
     }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: all tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pydelphiast/toon.py tests/test_toon.py

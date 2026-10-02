@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from pydelphiast.toon import encode_toon
+import pydelphiast as pda
+from pydelphiast.toon import (
+    _method_row,
+    _params_str,
+    _type_str,
+    encode_toon,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -112,3 +118,74 @@ class TestEncodeToonStructures:
 
     def test_root_list(self):
         assert encode_toon([1, 2]) == "[2]: 1,2"
+
+
+# ---------------------------------------------------------------------------
+# Task 2 – type / parameter / method formatting
+# ---------------------------------------------------------------------------
+
+def _tref(name, *args):
+    node = {"kind": "TypeRef", "name": name}
+    if args:
+        node["typeArgs"] = list(args)
+    return node
+
+
+class TestTypeStr:
+    @pytest.mark.parametrize("node, expected", [
+        (None, ""),
+        (_tref("Integer"), "Integer"),
+        (_tref("TList", {"kind": "StringType"}), "TList<string>"),
+        (_tref("TDictionary", _tref("string"), _tref("TList", _tref("Integer"))),
+         "TDictionary<string,TList<Integer>>"),
+        ({"kind": "StringType"}, "string"),
+        ({"kind": "OpenArrayType"}, "array of const"),
+        ({"kind": "OpenArrayType", "elementType": _tref("Integer")}, "array of Integer"),
+        ({"kind": "ArrayType", "elementType": _tref("Byte")}, "array of Byte"),
+        ({"kind": "SetType", "baseType": _tref("TDir")}, "set of TDir"),
+        ({"kind": "PointerType", "baseType": _tref("Integer")}, "^Integer"),
+        ({"kind": "ProcType", "isFunction": True}, "function"),
+        ({"kind": "ProcType", "isFunction": False}, "procedure"),
+        ({"kind": "MethodReference", "procType": {"kind": "ProcType", "isFunction": False}},
+         "reference to procedure"),
+        ({"kind": "EnumType"}, "EnumType"),
+    ])
+    def test_type_str(self, node, expected):
+        assert _type_str(node) == expected
+
+
+class TestParamsAndMethodRow:
+    def test_params_from_real_method(self):
+        ast = pda.parse_source(
+            "unit U; interface type T = class "
+            "procedure P(const A, B: string; var C: Integer; out D; "
+            "const V: array of const; X: array of Integer); end; "
+            "implementation end.",
+            "U.pas",
+        )
+        m = ast["interface"]["declarations"][0]["items"][0]["typeDefinition"]["members"][0]
+        assert _params_str(m["params"]) == (
+            "const A,B:string; var C:Integer; out D; "
+            "const V:array of const; X:array of Integer"
+        )
+
+    def test_params_open_array_param_node(self):
+        params = [{"kind": "OpenArrayParam", "modifier": "const", "elementType": None}]
+        assert _params_str(params) == "const array of const"
+
+    def test_params_empty(self):
+        assert _params_str(None) == ""
+        assert _params_str([]) == ""
+
+    def test_method_row_function(self):
+        m = {"kind": "MethodDecl", "methodKind": "function", "name": "Get",
+             "returnType": _tref("Integer"), "visibility": "protected",
+             "isClassMember": False}
+        assert _method_row(m) == {"vis": "protected", "kind": "function", "name": "Get",
+                                  "params": "", "returns": "Integer"}
+
+    def test_method_row_class_member_and_default_visibility(self):
+        m = {"kind": "MethodDecl", "methodKind": "function", "name": "Make",
+             "returnType": _tref("TFoo"), "isClassMember": True}
+        assert _method_row(m) == {"vis": "public", "kind": "class function",
+                                  "name": "Make", "params": "", "returns": "TFoo"}
