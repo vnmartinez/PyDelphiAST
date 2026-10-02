@@ -97,6 +97,7 @@ def parse_file(
             if os.path.isfile(dfm_path):
                 with open(dfm_path, encoding=encoding, errors="replace") as fh:
                     ast["form"] = parse_dfm(fh.read(), dfm_path)
+                ast["form"]["filename"] = os.path.abspath(dfm_path)
         return ast
 
     if ext in (".dfm", ".xfm"):

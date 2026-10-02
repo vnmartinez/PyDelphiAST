@@ -578,7 +578,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `_compact_root(node, base) -> Tuple[Optional[str], Optional[dict]]` — Task 4 replaces it with the full version.
   - `_prune`, `_stem`, `_rel`, `_compact_unit`, `_compact_form`, `_PLURAL` (reused by Task 4).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the import block at the top of `tests/test_toon.py` with:
 
@@ -735,12 +735,12 @@ class TestExtractUnit:
         assert ast["form"]["filename"] == str((tmp_path / "U.dfm").resolve())
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: FAIL — `ImportError: cannot import name 'extract_compact_hierarchy'`
 
-- [ ] **Step 3: Update module imports and `__all__`**
+- [x] **Step 3: Update module imports and `__all__`**
 
 In `src/pydelphiast/toon.py` replace
 
@@ -765,7 +765,7 @@ from typing import Any, Iterator, List, Optional, Tuple
 __all__ = ["encode_toon", "extract_compact_hierarchy"]
 ```
 
-- [ ] **Step 4: Implement unit/form extraction**
+- [x] **Step 4: Implement unit/form extraction**
 
 Append to the end of `src/pydelphiast/toon.py`:
 
@@ -925,7 +925,7 @@ def extract_compact_hierarchy(ast: Any, base_dir: Optional[str] = None) -> dict:
     return out
 ```
 
-- [ ] **Step 5: Stamp the companion form path in `parse_file()`**
+- [x] **Step 5: Stamp the companion form path in `parse_file()`**
 
 In `src/pydelphiast/__init__.py`, `parse_file()`, `.pas` branch, replace
 
@@ -942,17 +942,17 @@ with
                 ast["form"]["filename"] = os.path.abspath(dfm_path)
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: all tests PASS (including `test_parse_file_stamps_form_filename`)
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 Run: `pytest -q`
 Expected: full suite PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/pydelphiast/toon.py tests/test_toon.py src/pydelphiast/__init__.py

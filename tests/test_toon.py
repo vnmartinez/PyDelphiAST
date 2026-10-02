@@ -10,6 +10,7 @@ from pydelphiast.toon import (
     _params_str,
     _type_str,
     encode_toon,
+    extract_compact_hierarchy,
 )
 
 
@@ -189,3 +190,138 @@ class TestParamsAndMethodRow:
              "returnType": _tref("TFoo"), "isClassMember": True}
         assert _method_row(m) == {"vis": "public", "kind": "class function",
                                   "name": "Make", "params": "", "returns": "TFoo"}
+
+
+# ---------------------------------------------------------------------------
+# Task 3 – unit / form extraction
+# ---------------------------------------------------------------------------
+
+UNIT_SRC = """unit UDemo;
+interface
+type
+  IFoo = interface
+    ['{00000000-0000-0000-0000-000000000000}']
+    function Get: Integer;
+  end;
+  TRec = record
+    X: Integer;
+    procedure Clear;
+  end;
+  TFwd = class;
+  TFoo = class(TForm, IFoo)
+  private
+    FX: Integer;
+    procedure DoIt(const A, B: string; var C: Integer);
+  protected
+    function Get: Integer; virtual;
+  public
+    constructor Create(AOwner: TComponent); override;
+    class function Make: TFoo;
+    property X: Integer read FX;
+  end;
+  THelp = class helper for TObject
+    procedure Hi;
+  end;
+  TPack = packed record
+    A: Byte;
+  end;
+  TCount = Integer;
+procedure Free(P: Pointer);
+implementation
+type
+  TImpl = class
+    procedure Z;
+  end;
+procedure Free(P: Pointer); begin end;
+end.
+"""
+
+EXPECTED_UNIT_TYPES = [
+    {"name": "IFoo", "kind": "interface",
+     "methods": [{"vis": "public", "kind": "function", "name": "Get",
+                  "params": "", "returns": "Integer"}]},
+    {"name": "TRec", "kind": "record",
+     "methods": [{"vis": "public", "kind": "procedure", "name": "Clear",
+                  "params": "", "returns": ""}]},
+    {"name": "TFoo", "kind": "class", "ancestors": ["TForm", "IFoo"],
+     "methods": [
+         {"vis": "private", "kind": "procedure", "name": "DoIt",
+          "params": "const A,B:string; var C:Integer", "returns": ""},
+         {"vis": "protected", "kind": "function", "name": "Get",
+          "params": "", "returns": "Integer"},
+         {"vis": "public", "kind": "constructor", "name": "Create",
+          "params": "AOwner:TComponent", "returns": ""},
+         {"vis": "public", "kind": "class function", "name": "Make",
+          "params": "", "returns": "TFoo"},
+     ]},
+    {"name": "THelp", "kind": "class helper", "for": "TObject",
+     "methods": [{"vis": "published", "kind": "procedure", "name": "Hi",
+                  "params": "", "returns": ""}]},
+    {"name": "TPack", "kind": "record"},
+    {"name": "TImpl", "kind": "class",
+     "methods": [{"vis": "published", "kind": "procedure", "name": "Z",
+                  "params": "", "returns": ""}]},
+]
+
+
+class TestExtractUnit:
+    def test_unit_types_from_full_ast(self, tmp_path):
+        ast = pda.parse_source(UNIT_SRC, "UDemo.pas")
+        out = extract_compact_hierarchy(ast, base_dir=str(tmp_path))
+        assert out["base"] == str(tmp_path).replace("\\", "/")
+        assert out["unit"]["name"] == "UDemo"
+        assert "path" not in out["unit"]  # parse_source does not stamp filename
+        assert out["unit"]["types"] == EXPECTED_UNIT_TYPES
+
+    def test_slim_and_full_ast_give_same_result(self, tmp_path):
+        ast = pda.parse_source(UNIT_SRC, "UDemo.pas")
+        full = extract_compact_hierarchy(ast, base_dir=str(tmp_path))
+        slim = extract_compact_hierarchy(pda.slim_ast(ast), base_dir=str(tmp_path))
+        assert full == slim
+
+    def test_unit_file_with_companion_form(self, tmp_path):
+        (tmp_path / "UMain.pas").write_text(
+            "unit UMain;\ninterface\ntype\n  TMainForm = class(TForm)\n"
+            "    procedure FormCreate(Sender: TObject);\n  end;\n"
+            "implementation\nprocedure TMainForm.FormCreate(Sender: TObject); begin end;\nend.\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "UMain.dfm").write_text(
+            "object MainForm: TMainForm\n  Left = 0\nend\n", encoding="utf-8"
+        )
+        out = extract_compact_hierarchy(pda.parse_file(str(tmp_path / "UMain.pas")))
+        assert out["base"] == str(tmp_path).replace("\\", "/")
+        assert out["unit"] == {
+            "name": "UMain",
+            "path": "UMain.pas",
+            "form": {"name": "MainForm", "class": "TMainForm", "path": "UMain.dfm"},
+            "types": [{
+                "name": "TMainForm", "kind": "class", "ancestors": ["TForm"],
+                "methods": [{"vis": "published", "kind": "procedure", "name": "FormCreate",
+                             "params": "Sender:TObject", "returns": ""}],
+            }],
+        }
+
+    def test_form_path_falls_back_to_unit_path(self, tmp_path):
+        unit = {"kind": "Unit", "name": "U", "filename": str(tmp_path / "U.pas"),
+                "form": {"kind": "DfmObject", "name": "F", "className": "TF"}}
+        out = extract_compact_hierarchy(unit)
+        assert out["unit"]["form"] == {"name": "F", "class": "TF", "path": "U.dfm"}
+
+    def test_dfm_root(self, tmp_path):
+        dfm = tmp_path / "F.dfm"
+        dfm.write_text("object F: TF\nend\n", encoding="utf-8")
+        out = extract_compact_hierarchy(pda.parse_file(str(dfm)))
+        assert out["form"] == {"name": "F", "class": "TF", "path": "F.dfm"}
+
+    def test_parse_error_root(self, tmp_path):
+        node = {"kind": "ParseError", "filename": str(tmp_path / "X.pas"), "message": "boom"}
+        out = extract_compact_hierarchy(node)
+        assert out["error"] == {"path": "X.pas", "message": "boom"}
+
+    def test_parse_file_stamps_form_filename(self, tmp_path):
+        (tmp_path / "U.pas").write_text("unit U; interface implementation end.",
+                                        encoding="utf-8")
+        (tmp_path / "U.dfm").write_text("object F: TF\nend\n", encoding="utf-8")
+        ast = pda.parse_file(str(tmp_path / "U.pas"))
+        assert ast["form"]["filename"] == str((tmp_path / "U.dfm").resolve())
