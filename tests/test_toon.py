@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import pydelphiast as pda
+from pydelphiast.__main__ import main as cli_main
 from pydelphiast.toon import (
     _method_row,
     _params_str,
@@ -518,3 +519,29 @@ class TestToToon:
     def test_toon_is_smaller_than_json(self, group_dir):
         ast = pda.parse_project(str(group_dir / "Group.groupproj"))
         assert len(pda.to_toon(ast)) * 5 < len(pda.to_json(ast))
+
+
+# ---------------------------------------------------------------------------
+# Task 6 – CLI
+# ---------------------------------------------------------------------------
+
+class TestCliToon:
+    def test_toon_flag_writes_toon_next_to_input(self, group_dir):
+        root = group_dir / "Group.groupproj"
+        assert cli_main([str(root), "--toon"]) == 0
+        out = group_dir / "Group.toon"
+        assert out.is_file()
+        ast = pda.parse_project(str(root))
+        assert out.read_text(encoding="utf-8") == pda.to_toon(ast)
+        assert not (group_dir / "Group.json").exists()
+
+    def test_toon_flag_respects_output(self, group_dir, tmp_path):
+        target = tmp_path / "custom.toon"
+        assert cli_main([str(group_dir / "App" / "UMain.pas"), "--toon",
+                         "-o", str(target)]) == 0
+        assert target.read_text(encoding="utf-8").startswith("base: ")
+
+    def test_without_toon_still_writes_json(self, group_dir):
+        assert cli_main([str(group_dir / "App" / "UMain.pas")]) == 0
+        assert (group_dir / "App" / "UMain.json").is_file()
+        assert not (group_dir / "App" / "UMain.toon").exists()

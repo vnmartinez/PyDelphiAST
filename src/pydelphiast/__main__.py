@@ -16,6 +16,9 @@ Usage examples::
 
     # Parse multiple files at once
     python -m pydelphiast Unit1.pas Unit2.pas Form1.dfm
+
+    # Compact hierarchy in TOON (writes MyApp.toon)
+    python -m pydelphiast MyApp.groupproj --toon
 """
 
 from __future__ import annotations
@@ -78,6 +81,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "keeps only uses, classes, methods, fields, properties, consts, vars",
     )
     p.add_argument(
+        "--toon",
+        action="store_true",
+        help="Output the compact hierarchy (group > projects > units > forms/types "
+             "> methods) in TOON format to <stem>.toon",
+    )
+    p.add_argument(
         "--version",
         action="version",
         version=f"pydelphiast {pda.__version__}",
@@ -127,19 +136,24 @@ def main(argv: list[str] | None = None) -> int:
             })
 
     output = results[0] if len(results) == 1 else results
-    if args.slim:
-        output = pda.slim_ast(output)
-    text = json.dumps(output, indent=indent, ensure_ascii=False, default=str)
+    if args.toon:
+        text = pda.to_toon(output)
+        suffix, label = ".toon", "TOON"
+    else:
+        if args.slim:
+            output = pda.slim_ast(output)
+        text = json.dumps(output, indent=indent, ensure_ascii=False, default=str)
+        suffix, label = ".json", "AST"
 
     if args.output:
         out_path = Path(args.output)
     else:
-        # Default: write <first-input-stem>.json next to the input file
+        # Default: write <first-input-stem><suffix> next to the input file
         stem = Path(args.files[0]).stem
-        out_path = Path(args.files[0]).parent / f"{stem}.json"
+        out_path = Path(args.files[0]).parent / f"{stem}{suffix}"
 
     out_path.write_text(text, encoding="utf-8")
-    print(f"AST written to {out_path}", file=sys.stderr)
+    print(f"{label} written to {out_path}", file=sys.stderr)
 
     return 0
 

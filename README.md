@@ -59,6 +59,9 @@ pydelphiast MyUnit.pas --no-forms
 
 # Interromper no primeiro erro de parse
 pydelphiast MyApp.dpr --stop-on-error
+
+# Exportar hierarquia compacta em formato TOON (para LLMs) → gera MyApp.toon
+pydelphiast MyApp.groupproj --toon
 ```
 
 | Opção | Descrição |
@@ -68,6 +71,20 @@ pydelphiast MyApp.dpr --stop-on-error
 | `--indent N` | Indentação JSON (padrão `2`; use `0` para compacto) |
 | `--no-forms` | Não carregar formulários `.dfm` companheiros |
 | `--stop-on-error` | Falhar imediatamente no primeiro erro de parse |
+| `--toon` | Exportar hierarquia compacta em formato TOON para `<stem>.toon` |
+
+### Exportação TOON
+
+Hierarquia compacta e token-eficiente (group > projects > units > forms/types > methods), ideal para contextos de LLM:
+
+```bash
+python -m pydelphiast MyApp.groupproj --toon
+```
+
+```python
+import pydelphiast as pda
+print(pda.to_toon(pda.parse_project("MyApp.groupproj")))
+```
 
 ### API Python
 
@@ -187,6 +204,9 @@ pydelphiast MyUnit.pas --no-forms
 
 # Abort on first parse error
 pydelphiast MyApp.dpr --stop-on-error
+
+# Export compact hierarchy in TOON format (for LLMs) → produces MyApp.toon
+pydelphiast MyApp.groupproj --toon
 ```
 
 | Option | Description |
@@ -196,6 +216,20 @@ pydelphiast MyApp.dpr --stop-on-error
 | `--indent N` | JSON indentation (default `2`; `0` for compact) |
 | `--no-forms` | Do not auto-load companion `.dfm` forms |
 | `--stop-on-error` | Abort on the first parse error |
+| `--toon` | Output compact hierarchy in TOON format to `<stem>.toon` |
+
+### TOON Export
+
+Compact, token-efficient hierarchy (group > projects > units > forms/types > methods), designed for LLM prompts and context windows:
+
+```bash
+python -m pydelphiast MyApp.groupproj --toon
+```
+
+```python
+import pydelphiast as pda
+print(pda.to_toon(pda.parse_project("MyApp.groupproj")))
+```
 
 ### Python API
 

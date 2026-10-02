@@ -28,6 +28,9 @@ python -m pydelphiast MyApp.groupproj
 
 # Save AST to a specific file
 python -m pydelphiast MyUnit.pas -o ast.json
+
+# Compact hierarchy in TOON (group > projects > units > forms/types > methods)
+python -m pydelphiast MyApp.groupproj --toon    # → MyApp.toon
 ```
 
 ## Architecture
@@ -49,6 +52,9 @@ src/pydelphiast/
     groupproj_parser.py – XML parsers for .groupproj and .dproj (MSBuild)
   project.py          – DelphiProject: walks the file hierarchy, resolves
                         uses-clause references, pairs .pas with .dfm
+  toon.py             – TOON export: encode_toon() (generic encoder),
+                        extract_compact_hierarchy() (group > projects > units >
+                        form/types > methods, paths relative to `base`), to_toon()
   __init__.py         – Public API: parse_file(), parse_source(), parse_project(),
                         to_json()
   __main__.py         – CLI entry point

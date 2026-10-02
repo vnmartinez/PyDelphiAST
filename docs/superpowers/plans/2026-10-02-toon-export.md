@@ -1437,7 +1437,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `pydelphiast.to_toon` (Task 5).
 - Produces: `python -m pydelphiast <file> --toon` → writes `<dir of first file>/<stem>.toon` (or `-o` target); stderr `TOON written to <path>`; `--slim`/`--indent` are ignored with `--toon`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the import block at the top of `tests/test_toon.py` with:
 
@@ -1489,12 +1489,12 @@ class TestCliToon:
         assert not (group_dir / "App" / "UMain.toon").exists()
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `pytest tests/test_toon.py -v -k Cli`
 Expected: 2 FAIL (`SystemExit: 2`, argparse: unrecognized arguments: --toon); `test_without_toon_still_writes_json` already passes (regression guard)
 
-- [ ] **Step 3: Add the flag**
+- [x] **Step 3: Add the flag**
 
 In `src/pydelphiast/__main__.py`, `_build_parser()`, insert before the `--version` argument:
 
@@ -1507,7 +1507,7 @@ In `src/pydelphiast/__main__.py`, `_build_parser()`, insert before the `--versio
     )
 ```
 
-- [ ] **Step 4: Branch the output in `main()`**
+- [x] **Step 4: Branch the output in `main()`**
 
 Replace
 
@@ -1559,12 +1559,12 @@ Add to the module docstring usage examples:
     python -m pydelphiast MyApp.groupproj --toon
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `pytest tests/test_toon.py -v`
 Expected: all tests PASS
 
-- [ ] **Step 6: Document**
+- [x] **Step 6: Document**
 
 In `CLAUDE.md`, section `## Commands`, after the "Save AST to a specific file" example add:
 
@@ -1588,7 +1588,7 @@ import pydelphiast as pda
 print(pda.to_toon(pda.parse_project("MyApp.groupproj")))
 ```
 
-- [ ] **Step 7: Final verification**
+- [x] **Step 7: Final verification**
 
 Run: `pytest -q`
 Expected: full suite PASS (existing tests + `tests/test_toon.py`).
@@ -1596,7 +1596,7 @@ Expected: full suite PASS (existing tests + `tests/test_toon.py`).
 Run: `python -m pydelphiast tests/fixtures/simple.pas --toon -o %TEMP%/simple.toon` (PowerShell: `$env:TEMP/simple.toon`)
 Expected: stderr `TOON written to …`; file starts with `base: "` and contains `unit:` / `types[`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/pydelphiast/__main__.py tests/test_toon.py CLAUDE.md README.md
