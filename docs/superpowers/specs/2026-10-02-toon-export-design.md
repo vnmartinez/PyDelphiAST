@@ -33,7 +33,7 @@ Novo módulo `src/pydelphiast/toon.py` com três unidades independentes:
 
 | Unidade | Responsabilidade | Entrada → Saída |
 |---|---|---|
-| `encode_toon(value, indent=2)` | Encoder TOON genérico (não sabe nada de Delphi) | `dict/list/primitivo` → `str` |
+| `encode_toon(value)` | Encoder TOON genérico (não sabe nada de Delphi) | `dict/list/primitivo` → `str` |
 | `extract_compact_hierarchy(ast, base_dir=None)` | Reduz o AST (completo **ou** `slim_ast`) à hierarquia essencial | `dict` ou `list[dict]` → `dict` |
 | `to_toon(ast, base_dir=None)` | Composição: `encode_toon(extract_compact_hierarchy(ast, base_dir))` | AST → `str` |
 
@@ -62,7 +62,7 @@ células de linhas tabulares (ver Métodos).
 | `Program` / `Library` / `Package` | `{"base": ..., "project": Project}` |
 | `Unit` | `{"base": ..., "unit": Unit}` |
 | `DfmObject` | `{"base": ..., "form": Form}` |
-| `list` (CLI com vários arquivos) | `{"base": ..., "groups": [...], "projects": [...], "units": [...], "forms": [...]}` (só as chaves não vazias, na ordem de entrada dentro de cada uma) |
+| `list` (CLI com vários arquivos) | `{"base": ..., "groups": [...], "projects": [...], "units": [...], "forms": [...]}` (só as chaves presentes, na ordem da primeira ocorrência; itens na ordem de entrada) |
 | `ParseError` (raiz) | `{"base": ..., "error": {"path": ..., "message": ...}}` |
 
 ### Caminhos
@@ -72,6 +72,7 @@ células de linhas tabulares (ver Métodos).
   diretórios; se nenhum `filename` existir, `os.getcwd()`. O parâmetro
   `base_dir` sobrescreve.
 - Todo `path`/`source` é **relativo a `base`**, em POSIX (`src/UMain.pas`).
+  Nós sem `filename` (ex.: AST vindo de `parse_source`) simplesmente não têm `path`.
   Se `os.path.relpath` falhar (drive diferente no Windows), usa-se o caminho
   absoluto POSIX.
 - Motivo: em TOON, `\` exige aspas + escape; caminhos absolutos repetidos
@@ -131,11 +132,12 @@ Só `TypeDecl` cujo `typeDefinition.kind` ∈ {`ClassType`, `InterfaceType`,
 (`isForward: true`) são ignoradas. `PackedType` é desembrulhado (`inner`).
 
 ```
-{"name", "kind", "ancestors": [str, ...], "methods": [Method, ...]}
+{"name", "kind", "for": str, "ancestors": [str, ...], "methods": [Method, ...]}
 ```
 
 - `kind`: `class` | `interface` | `dispinterface` | `record` | `object`;
   sufixo ` helper` quando `isHelper`.
+- `for`: tipo estendido (`helperFor`), só em helpers.
 - `ancestors`: nomes formatados por `_type_str` (classe base e interfaces).
 - Membros vêm de `members` (classe/interface/object) ou `fields` (record);
   só `MethodDecl` vira método.
@@ -159,7 +161,7 @@ Campos fixos, nessa ordem: `vis,kind,name,params,returns`.
 | Nó | Texto |
 |---|---|
 | `TypeRef` | `name` + `<a,b>` se houver `typeArgs` |
-| `StringType` | `string` (ou `string[N]` se `maxLength` literal) |
+| `StringType` | `string` |
 | `OpenArrayType` | `array of T` / `array of const` |
 | `ArrayType` | `array of T` (dimensões omitidas) |
 | `SetType` | `set of T` |
@@ -179,6 +181,7 @@ delimitador `,`, indentação de 2 espaços, `\n`, sem newline final):
 - **Array tabular**: quando todos os itens são dicts com o mesmo conjunto
   ordenado de chaves e só valores primitivos → `key[N]{f1,f2}:` e uma linha
   por item, indentada, com células separadas por `,`.
+- Consequência: uma lista de units só com `{name,path,ref}` sai tabular — correto pelo spec.
 - **Lista**: demais arrays → `key[N]:` e itens `- `. Item objeto: primeira
   chave na linha do hífen (`- name: X`), restantes alinhadas com ela
   (indentação do hífen + 2). Item primitivo: `- v`.
@@ -256,6 +259,6 @@ group:
 
 ## Fora de escopo (YAGNI)
 
-Decodificador TOON; propriedades/campos/consts/vars; rotinas soltas;
+Decodificador TOON; `string[N]`; propriedades/campos/consts/vars; rotinas soltas;
 componentes do DFM; valores default de parâmetros; dimensões de arrays;
 delimitadores alternativos (`\t`, `|`); key folding.
